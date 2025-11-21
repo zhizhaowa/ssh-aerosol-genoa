@@ -462,8 +462,12 @@ contains
     INTEGER :: sid, svid  !size
     INTEGER :: lbid, hbid, emid, sbid  !lower and higher bound
 
+    !species name and molecular weight
+    INTEGER :: spid, nameid, mwvid, namevid, tmpid, pressid
+
     !variable IDs
-    INTEGER :: concid(5000) !nb mx of var
+    INTEGER :: nconc
+    INTEGER, ALLOCATABLE :: concid(:) !nb mx of var
   
     !local var
     INTEGER :: s,b,i,j,k,m,isizmix 
@@ -481,39 +485,68 @@ contains
     out_aero(6) = 'PM1'
     out_aero(7) = 'PM2.5'
     out_aero(8) = 'PM10'
-    
+
+!   Allocate concentration ids
+    nconc = MAX(n_gas, n_aerosol + 9)
+    ALLOCATE(concid(nconc))
+
 !   to add after "ncstat line" to have information on potential error: ";call handle_err(ncstat)"
     
 !=======
 ! gas file
-    ncstat = nf90_create(trim(output_directory) // "gas.nc", NF90_NETCDF4, ncid)
+    ncstat = nf90_create(trim(output_directory) // "/gas.nc", NF90_NETCDF4, ncid)
     ncstat = nf90_put_att(ncid, NF90_GLOBAL, 'Title', 'SSH-aerosol ouput file: concentrations of gaseous species')  
     
     !dim 1
     ncstat = nf90_def_dim(ncid,"Time",nt+1,tid)
     ncstat = nf90_def_var(ncid,"Time", NF90_DOUBLE,  (/ tid /), tvid)
     ncstat = nf90_put_att(ncid, tvid, 'units', 'seconds') 
-    
+
+    !dim 2 & 3
+    ncstat = nf90_def_dim(ncid, "n_gas", n_gas, spid)
+    ncstat = nf90_def_dim(ncid, "species_name_length", len(species_name(1)), nameid)
+
     !main output 
+    ! species names
+    ncstat = nf90_def_var(ncid, "species_name", NF90_CHAR,  (/ nameid, spid /), namevid)
+    ! molecular weight
+    ncstat = nf90_def_var(ncid, "molecular_weight", NF90_DOUBLE,  (/ spid /), mwvid)
+    ncstat = nf90_put_att(ncid, mwvid, 'units', 'g/mol')
+    ncstat = nf90_put_att(ncid, mwvid, 'title', 'molecular weight of gaseous species')
+    ! temperature
+    ncstat = nf90_def_var(ncid, "temperature", NF90_DOUBLE,  (/ tid /), tmpid)
+    ncstat = nf90_put_att(ncid, tmpid, 'units', 'K')
+    ncstat = nf90_put_att(ncid, tmpid, 'title', 'temperature per time step')
+    ! pressure
+    ncstat = nf90_def_var(ncid, "pressure", NF90_DOUBLE,  (/ tid /), pressid)
+    ncstat = nf90_put_att(ncid, pressid, 'units', 'Pa')
+    ncstat = nf90_put_att(ncid, pressid, 'title', 'pressure per time step')
+    ! concentrations
     do s = 1, n_gas
       ncstat = nf90_def_var(ncid,trim(species_name(s)), NF90_DOUBLE,  (/ tid /), concid(s))
       ncstat = nf90_put_att(ncid, concid(s), 'units', 'microgram_m-3')
-      ncstat = nf90_put_att(ncid, concid(1), 'title', species_name(s) // ' gaseous concentration')
+      ncstat = nf90_put_att(ncid, concid(s), 'title', trim(species_name(s)) // ' gaseous concentration')
     enddo
-    
+
     !output value writing
     ncstat = nf90_put_var(ncid, tvid, output_time(1:nt+1))
     do s = 1, n_gas
       ncstat = nf90_put_var(ncid, concid(s), output_gas(1:nt+1,s))
     enddo
-    
+
+    !output species name, molecular weight, temperature, and pressure
+    ncstat = nf90_put_var(ncid, namevid, species_name)  ! species name
+    ncstat = nf90_put_var(ncid, mwvid, molecular_weight)  ! molecular weight
+    ncstat = nf90_put_var(ncid, tmpid, temperature)  ! temperature
+    ncstat = nf90_put_var(ncid, pressid, pressure)  ! pressure
+
     ncstat = nf90_close(ncid)
 !=======
    
     
 !=======
 ! number file
-    ncstat = nf90_create(trim(output_directory) // "number.nc", NF90_NETCDF4, ncid)
+    ncstat = nf90_create(trim(output_directory) // "/number.nc", NF90_NETCDF4, ncid)
     ncstat = nf90_put_att(ncid, NF90_GLOBAL, 'Title', 'SSH-aerosol ouput file: numbers of particles')  
     
     !dim 1
@@ -573,7 +606,7 @@ contains
     
 !=======
 ! diameter file
-    ncstat = nf90_create(trim(output_directory) // "diameter.nc", NF90_NETCDF4, ncid)
+    ncstat = nf90_create(trim(output_directory) // "/diameter.nc", NF90_NETCDF4, ncid)
     ncstat = nf90_put_att(ncid, NF90_GLOBAL, 'Title', 'SSH-aerosol ouput file: average diameters of particles')
     
     !dim 1
@@ -629,7 +662,7 @@ contains
     
 !=======
 ! TM file    
-    ncstat = nf90_create(trim(output_directory) // "TM.nc", NF90_NETCDF4, ncid)
+    ncstat = nf90_create(trim(output_directory) // "/TM.nc", NF90_NETCDF4, ncid)
     ncstat = nf90_put_att(ncid, NF90_GLOBAL, 'Title', 'SSH-aerosol ouput file: concentrations of condensable species')
     
     !dim 1
@@ -646,7 +679,7 @@ contains
     do s = 1, N_aerosol
       ncstat = nf90_def_var(ncid,aerosol_species_name(s), NF90_DOUBLE,  (/ tid , pid /), concid(s))
       ncstat = nf90_put_att(ncid, concid(s), 'units', 'microgram_m-3')
-      ncstat = nf90_put_att(ncid, concid(s), 'title', 'gas, aer. and total concentrations of ' // aerosol_species_name(s) )
+      ncstat = nf90_put_att(ncid, concid(s), 'title', 'gas, aer. and total concentrations of ' // trim(aerosol_species_name(s)) )
     enddo
     
     !output value writing
@@ -662,7 +695,7 @@ contains
 
 !=======
 ! aero file 
-    ncstat = nf90_create(trim(output_directory) // "aero.nc", NF90_NETCDF4, ncid)
+    ncstat = nf90_create(trim(output_directory) // "/aero.nc", NF90_NETCDF4, ncid)
     ncstat = nf90_put_att(ncid, NF90_GLOBAL, 'Title', 'SSH-aerosol ouput file: concentrations of aerosol species') 
     
     !dim 1
@@ -674,18 +707,26 @@ contains
     ncstat = nf90_def_dim(ncid,"size_mix_ind",N_size,sid)
     ncstat = nf90_def_var(ncid,"size_mix_ind", NF90_DOUBLE,  (/ sid /), svid)
     ncstat = nf90_put_att(ncid, svid, 'title', 'size bin / external mixing indice')
-    
+
+    !dim 3 & 4
+    ncstat = nf90_def_dim(ncid, "n_aerosol", n_aerosol, spid)
+    ncstat = nf90_def_dim(ncid, "species_name_length", len(aerosol_species_name(1)), nameid)
+
     !main output
+    ! species names
+    ncstat = nf90_def_var(ncid, "species_name", NF90_CHAR,  (/ nameid, spid /), namevid)
+    ncstat = nf90_put_att(ncid, namevid, 'title', 'aerosol species name')
+    ! concentrations
     do s = 1, N_aerosol
       ncstat = nf90_def_var(ncid,aerosol_species_name(s), NF90_DOUBLE,  (/ tid , sid /), concid(s))
       ncstat = nf90_put_att(ncid, concid(s), 'units', 'microgram_m-3')
-      ncstat = nf90_put_att(ncid, concid(s), 'title', aerosol_species_name(s) // &
+      ncstat = nf90_put_att(ncid, concid(s), 'title', trim(aerosol_species_name(s)) // &
                           " aer. concentration for considered sizebin and ext. mix")
     enddo
     do s = 1, 8
       ncstat = nf90_def_var(ncid,out_aero(s), NF90_DOUBLE,  (/ tid /), concid(N_aerosol+s))
       ncstat = nf90_put_att(ncid, concid(N_aerosol+s), 'units', 'microgram_m-3')
-      ncstat = nf90_put_att(ncid, concid(N_aerosol+s), 'title', out_aero(s) // " concentration")
+      ncstat = nf90_put_att(ncid, concid(N_aerosol+s), 'title', trim(out_aero(s)) // " concentration")
     enddo
     ncstat = nf90_def_var(ncid,"pH", NF90_DOUBLE,  (/ tid , sid /), concid(N_aerosol+8+1))
     ncstat = nf90_put_att(ncid, concid(N_aerosol+8+1), 'title', "pH in particle for considered sizebin and ext. mix")
@@ -727,10 +768,13 @@ contains
       ncstat = nf90_put_var(ncid, concid(N_aerosol+s), output_special(1:nt+1,s))
     enddo
     ncstat = nf90_put_var(ncid, concid(N_aerosol+8+1), output_pH(1:nt+1,1:N_size))
-    
+    ncstat = nf90_put_var(ncid, namevid, aerosol_species_name)  ! species name
+
     ncstat = nf90_close(ncid)
 !=======
-  
+
+    IF (ALLOCATED(concid)) DEALLOCATE(concid)
+
   END SUBROUTINE ssh_write_output_netcdf  
   
 
@@ -1064,16 +1108,17 @@ contains
   
   ! ======================================================
   ! 
-  !   Error Calculation used for GENOA
+  !   Error Calculation used for GENOA and save to file
   !
   !   Active if tag_genoa == 1 - fast mode
   ! 
   ! ======================================================
   
-  integer :: t, s, t1, ind
+  integer :: t, s, t1, ind, stat
   double precision, dimension(:,:), allocatable :: rerr ! storage error
   double precision, dimension(:), allocatable :: rerr_num, rerr_deno
-  character(len=200) :: outline
+  character(len=40) :: oformat  ! format for output in file
+  ! character(len=200) :: outline = "Ref Errs:"  ! print to screen
 
   if (nref_file.gt.0) then
     ! init
@@ -1081,8 +1126,7 @@ contains
     allocate(rerr_num(nout_total))
     allocate(rerr_deno(nout_total))
     rerr = 0.d0
-    outline = "Ref Errs: " ! init
-    
+
     do ind = 1, nref_file
       rerr_num = 0.d0
       rerr_deno = 0.d0
@@ -1105,13 +1149,26 @@ contains
             
           enddo
       enddo
-      ! print
-      print*, rerr(ind,:)
-      if (ind.gt.1) outline = trim(outline)//', '
-      write(outline, '(A, F15.4)') trim(outline), maxval(rerr(ind,:))
+      ! if (ind.gt.1) outline = trim(outline)//', '
+      ! write(outline, '(A, F15.4)') trim(outline), maxval(rerr(ind,:))
     end do
 
-    print*, outline
+    ! print to screen
+    ! print*, "Error info saved to file: ", trim(output_error_file)
+    ! print*, outline
+
+    ! write to file
+    open(unit=100, file = trim(output_error_file), status='replace', iostat=stat)
+    if (stat /= 0) then
+      print*, "Error opening file for error computation"
+      stop
+    endif
+    ! format
+    write(oformat, '("(",I0,"F10.5)")') nout_total
+    do ind = 1, nref_file
+      write(100, oformat) (rerr(ind,s), s=1, nout_total)
+    end do
+    close(100)
 
     if (allocated(rerr))  deallocate(rerr)
     if (allocated(rerr_num))  deallocate(rerr_num)

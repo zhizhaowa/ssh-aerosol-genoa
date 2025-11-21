@@ -389,7 +389,7 @@ module aInitialization
   integer, save :: spec_name_len
   character (len=40), dimension(:), allocatable, save :: emis_gas_species_name
   character (len=40), dimension(:), allocatable, save :: emis_aer_species_name
-  character (len=200), save :: output_directory, output_conc_file
+  character (len=200), save :: output_directory, output_conc_file, output_error_file
   
   ! Photolysis
   character (len=200), save :: photolysis_file ! File for photolysis list.
@@ -482,7 +482,7 @@ contains
     character (len=200) :: namelist_out
 
     ! genoa read input lists
-    character (len=40)  :: tmpID0, tmpID1, tmp_name
+    character (len=40)  :: tmp_dir, tmp_outname, tmp_refpath, tmp_name
     character (len=200) :: tmp_string
     character (len=400) :: output_aero_list, output_gas_list
     character (len=400) :: err_species_list 
@@ -585,8 +585,8 @@ contains
        if (ssh_logger) write(logfile,*) "File for meteorological data is not given."
        imeteo = .false.
     else
-       if (ssh_standalone) write(*,*) "File for meteorological data is read from file",trim(meteo_file)
-       if (ssh_logger) write(logfile,*) "File for meteorological data is read from file",trim(meteo_file)
+       if (ssh_standalone) write(*,*) "File for meteorological data is read from file: ",trim(meteo_file)
+       if (ssh_logger) write(logfile,*) "File for meteorological data is read from file: ",trim(meteo_file)
        imeteo = .true.
     endif
 
@@ -1632,38 +1632,42 @@ contains
        if (ssh_standalone) write(*,*) 'output directory :', trim(output_directory)
        if (ssh_logger) write(logfile,*) 'output directory :', trim(output_directory)
 
-       output_conc_file = trim(output_directory)//"/concs.txt"
+       ! Check if need to update output directory and file names with initID,chemID,resID
+       if(trim(chemID).ne."-") then ! Check chemID & resultID
+           tmp_dir = "/"//trim(chemID)
+           tmp_outname = trim(initID)//"."//trim(resID)
+           tmp_refpath = trim(initID)//"."//trim(resID)//".concs"
+           tmp_refpath = "/"//trim(initID)//"."//trim(resID)//".concs" ! for pre/ref files
+       else if (trim(initID).ne."-") then ! only w/ initID
+           tmp_dir = "/"
+           tmp_outname = trim(initID)
+           tmp_refpath = "/"//trim(initID)//".concs"
+       else  ! Default
+           tmp_dir = "-"
+           tmp_outname = "-"
+           tmp_refpath = "-"
+       endif
 
-       particles_composition_file = trim(output_directory)//"/" &
-            //trim(particles_composition_file)
-       
-       ! update output_conc_file and particles_composition_file with initID,chemID,resID
-       ! get suffix
-       if(trim(chemID).ne."-") then ! add chemID & resultID
-           tmpID0 = "/"//trim(chemID)//"/"//trim(initID)//"."//trim(resID)
-           tmpID1 = "/"//trim(initID)//"."//trim(resID)//".concs" ! for pre/ref files
-       else if (trim(initID).ne."-") then ! incase only put initID
-           tmpID0 = "/"//trim(initID) 
-           tmpID1 = "/"//trim(initID)//".concs"
-       else
-           tmpID0 = "-"
-       endif
-       if (trim(tmpID0).ne."-") then
-           ! detail output by IDs in tmpID0
-           output_directory = trim(output_directory)//trim(tmpID0)
-           particles_composition_file = trim(output_directory)//'.fac'
-           output_conc_file = trim(output_directory)//'.concs'
-       endif
+       ! Update output_directory
+       if (trim(tmp_dir).ne."-") output_directory = trim(output_directory)//trim(tmp_dir)
 
        ! Create directory if it does not exist.
        call system("mkdir -p "// trim(output_directory))
-       
+
+       ! Update output filenames
+       if (trim(tmp_outname).ne."-") then
+           output_conc_file = trim(output_directory)//'/'//trim(tmp_outname)//'.concs'
+           output_error_file = trim(output_directory)//'/'//trim(tmp_outname)//'.err'
+           particles_composition_file = trim(output_directory)//'/'//trim(tmp_outname)//'.fac'
+       else
+           output_conc_file = trim(output_directory)//"/concs.txt"
+           output_error_file = trim(output_directory)//"/errors.txt"
+           particles_composition_file = trim(output_directory)//"/"//trim(particles_composition_file)
+       endif
+
        if (ssh_standalone) write(*,*) 'Particles composition file : ', trim(particles_composition_file)
        if (ssh_logger) write(logfile,*) 'Particles composition file : ', trim(particles_composition_file)
 
-       if (ssh_standalone) write(*,*)   'Concs file : ', trim(output_conc_file)
-       if (ssh_logger) write(logfile,*) 'Concs file : ', trim(output_conc_file)
-       
     end if
 
     !!!!! genoa
@@ -1761,9 +1765,9 @@ contains
         do i = 1, nref_file
             call get_token(ref_conc_files_in, tmp_string, ",")
             
-            ! detail paths to references by IDs in tmpID1
-            if (trim(tmpID0).ne."-") then
-              ref_conc_files(i) = trim(adjustl(tmp_string))//trim(tmpID1)
+            ! detail paths to references by IDs
+            if (trim(tmp_refpath).ne."-") then
+              ref_conc_files(i) = trim(adjustl(tmp_string))//trim(tmp_refpath)
             else
               ref_conc_files(i) = tmp_string
             endif

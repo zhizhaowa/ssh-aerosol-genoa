@@ -6,8 +6,7 @@
 module mod_sshchemkinetic
   
   use aInitialization, only : attenuation, n_gas, &
-       relative_humidity, tag_genoa, &
-                          humidity, temperature, pressure, &
+                          relative_humidity, humidity, temperature, pressure, &
                           photo_rcn, TB_rcn, fall_rcn, extra_rcn, &
                           index_RCT, index_PDT, index_PDT_ratio, &
                           fall_coeff, extra_coeff, &
